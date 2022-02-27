@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -42,7 +44,7 @@ func translateTextWithModel(targetLanguage, text, model string) (string, error) 
 		Model: model, // Either "nmt" or "base".
 	})
 	if err != nil {
-		return "", fmt.Errorf("Translate: %v", err)
+		return "", fmt.Errorf("translate: %v", err)
 	}
 	if len(resp) == 0 {
 		return "", nil
@@ -105,6 +107,7 @@ func doXlate(from string, lang string, readFile string, writeFile string) {
 	xfile, err := os.Create(writeFile)
 	checkError(err)
 	defer xfile.Close()
+
 	head := false
 	code := false
 	scanner := bufio.NewScanner(file)
@@ -224,10 +227,11 @@ func addReadingTime(file string) {
 	mins := int(estimation.Duration.Minutes())
 	dur := ""
 	if mins > 1 {
-	dur = fmt.Sprintf("reading_time: %d minutes\n", mins)
+		dur = fmt.Sprintf("reading_time: %d minutes\n", mins)
 	} else if mins == 1 {
-	dur = fmt.Sprintf("reading_time: %d minute\n", mins)
+		dur = fmt.Sprintf("reading_time: %d minute\n", mins)
 	} else {
+		dur = fmt.Sprintf("reading_time: %d minute\n", mins)
 	}
 	fw.WriteString(dur)
 	fw.WriteString(string(f[fm:]))
@@ -235,35 +239,123 @@ func addReadingTime(file string) {
 }
 
 func main() {
-	fromLang := "en"
-	langs := [4]string{"nl", "fr", "de", "es"} // only doing these four languages right now
-	dir := os.Args[1]                          // only doing a directory passed in
-	for x := 0; x < len(langs); x++ {
-		lang := langs[x]
-		// fmt.Print("Translating: \n" + dir + "\nTo: ")
-		// switch lang {
-		// case "es":
-		// 	fmt.Println("Spanish")
-		// case "fr":
-		// 	fmt.Println("French")
-		// case "de":
-		// 	fmt.Println("German")
-		// case "nl":
-		// 	fmt.Println("Dutch")
-		// }
-		fi, err := os.Stat(dir)
-		checkError(err)
-		switch mode := fi.Mode(); {
-		case mode.IsDir():
-			// do directory stuff
-			getFile(fromLang, dir, lang)
-		case mode.IsRegular(): // we're just doing one file
-			pt := strings.Split(dir, "/")
-			fn := strings.Split(pt[len(pt)-1], ".")
-			path := strings.TrimRight(dir, pt[len(pt)-1])
-			writeFile := fmt.Sprintf("%s%s.%s.%s", path, fn[0], lang, fn[len(fn)-1])
-			doXlate(fromLang, lang, dir, writeFile)
+	var parameters PathParameters
+
+	// get command line parameters
+	flag.StringVar(&parameters.path, "path", "", "Content source path")
+	flag.BoolVar(&parameters.recursive, "recursive", false, "Recursive path search")
+	flag.StringVar(&parameters.destination, "dest", "", "Target translate content directory")
+	flag.StringVar(&parameters.fromLang, "from", "", "Original language code")
+	flag.StringVar(&parameters.toLang, "to", "", "Target language code")
+	flag.StringVar(&parameters.frontMatterTargets, "frontmatter", "bio,title,description", "Frontmatter fields to translate")
+	flag.StringVar(&parameters.googleAuthJSON, "googleauth", "google-secret.json", "Google Auth JSON file path")
+	flag.Parse()
+
+	if parameters.path == "" || parameters.destination == "" || parameters.fromLang == "" || parameters.toLang == "" {
+		// Exit and display usage information
+		fmt.Println("ERROR: Missing required parameters!")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	// Set basic variables
+	sourcePath := strings.TrimSuffix(parameters.path, "/")
+	targetPath := strings.TrimSuffix(parameters.destination, "/")
+	fromLang := parameters.fromLang
+	toLang := parameters.toLang
+	FrontMatterTargets = strings.Split(parameters.frontMatterTargets, ",")
+
+	// Start output
+	fmt.Println("===== Input Parameters =====")
+	fmt.Println("- From Language:       ", fromLang)
+	fmt.Println("- To Language:         ", toLang)
+	fmt.Println("- From Path:           ", sourcePath)
+	fmt.Println("- To Path:             ", targetPath)
+	fmt.Println("- FrontMatter Targets: ", FrontMatterTargets)
+
+	// Check to see if the source exists.
+	fi, err := os.Stat(sourcePath)
+	checkError(err)
+
+	// Set what file mode the source is to determine if this is a one-file or directory
+	sourceMode := fi.Mode()
+
+	// Check to see if the target exists
+	// If the target doesn't exist, create it based on what the source is
+	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+		if sourceMode.IsDir() {
+			// Create the target directory.
+			fmt.Println("===== Creating target directory: ", targetPath)
+			os.MkdirAll(targetPath, 0755)
 		}
+		if sourceMode.IsRegular() {
+			// Pop the filename off the path and create the parent directory.
+			fmt.Println("===== Creating target directory: ", filepath.Dir(targetPath))
+			os.MkdirAll(filepath.Dir(targetPath), 0755)
+		}
+	}
+
+	// Check if the source path is a directory or a file.
+	if sourceMode.IsDir() {
+		// do directory stuff
+		if parameters.recursive {
+			fmt.Println("===== Recursive directory mode")
+		} else {
+			fmt.Println("===== Directory mode")
+		}
+
+		// Get a list of files to translate.
+		targetFiles := ReadDir(sourcePath, parameters.recursive)
+
+		// Loop through the slice of files.
+		for _, f := range targetFiles {
+			toFile := targetPath + strings.Replace(f, sourcePath, "", 1)
+
+			fmt.Println(" - From: ", strings.TrimSuffix(f, "/"))
+			fmt.Println("     To: ", toFile)
+
+			//doXlate(fromLang, toLang, sourcePath, toFile)
+		}
+	}
+
+	if sourceMode.IsRegular() {
+		// we're just doing one file
+		fmt.Println("===== Single file mode")
+
+		// Get the filename from the source path.
+		fileName := filepath.Base(sourcePath)
+
+		// The target path should have already been created.
+		// If the target path is a directory, then take the source filename and append it to the target path.
+		// If the target path is not a directory and does not exist, then it must be a file that is being written to
+		var toFile string
+
+		// Check to see if the target path is a directory or a file.
+		tFii, err := os.Stat(targetPath)
+		// See if it exists
+		if os.IsNotExist(err) {
+			// The target path doesn't exist - must be a target filename
+			toFile = targetPath
+		} else {
+
+			targetMode := tFii.Mode()
+
+			if targetMode.IsDir() {
+				toFile = strings.TrimSuffix(targetPath, "/") + "/" + fileName
+			} else {
+				toFile = targetPath
+			}
+		}
+
+		fmt.Println(" - From: " + sourcePath)
+		fmt.Println("     To: ", toFile)
+
+		//pt := strings.Split(dir, "/")
+		//fn := strings.Split(pt[len(pt)-1], ".")
+		//path := strings.TrimRight(dir, pt[len(pt)-1])
+		//writeFile := fmt.Sprintf("%s%s.%s.%s", path, fn[0], lang, fn[len(fn)-1])
+		//doXlate(fromLang, toLang, sourcePath, toFile)
+		TranslateMarkdown(sourcePath)
 	}
 
 }
