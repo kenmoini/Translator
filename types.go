@@ -18,3 +18,10 @@ type FrontMatter struct {
 	Bio         string   `yaml:"bio,omitempty" toml:"bio,omitempty" json:"bio,omitempty"`
 	Tags        []string `yaml:"tags,omitempty" toml:"tags,omitempty" json:"tags,omitempty"`
 }
+
+// FrontMatterMeta contains the metadata for the Front Matter
+type FrontMatterMeta struct {
+	StartingLine string
+	EndingLine   string
+	Type         string
+}

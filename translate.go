@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -122,7 +123,7 @@ func doXlate(from string, lang string, readFile string, writeFile string) {
 	file.Close()
 }
 
-// is a value in the array?
+// isValueInList checks if a value is in the string slice and returns a boolean
 func isValueInList(value string, list []string) bool { // Test Written
 	for _, v := range list {
 		if v == value {
@@ -182,6 +183,7 @@ func main() {
 	flag.StringVar(&parameters.googleAuthJSON, "googleauth", "google-secret.json", "Google Auth JSON file path")
 	flag.Parse()
 
+	// Check to make sure we have all the parameters we need
 	if parameters.path == "" || parameters.destination == "" || parameters.fromLang == "" || parameters.toLang == "" {
 		// Exit and display usage information
 		fmt.Println("ERROR: Missing required parameters!")
@@ -189,14 +191,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Set basic variables
+	// Set scoped variables
 	sourcePath := strings.TrimSuffix(parameters.path, "/")
 	targetPath := strings.TrimSuffix(parameters.destination, "/")
-	FromLang := parameters.fromLang
-	ToLang := parameters.toLang
+
+	// Set global variables
+	FromLang = parameters.fromLang
+	ToLang = parameters.toLang
 	FrontMatterTargets = strings.Split(parameters.frontMatterTargets, ",")
 
-	// Start output
+	// Start general output
 	fmt.Println("===== Input Parameters =====")
 	fmt.Println("- From Language:       ", FromLang)
 	fmt.Println("- To Language:         ", ToLang)
@@ -230,9 +234,9 @@ func main() {
 	if sourceMode.IsDir() {
 		// do directory stuff
 		if parameters.recursive {
-			fmt.Println("===== Recursive directory mode")
+			fmt.Println("===== Recursive directory mode =====")
 		} else {
-			fmt.Println("===== Directory mode")
+			fmt.Println("===== Directory mode =====")
 		}
 
 		// Get a list of files to translate.
@@ -251,7 +255,7 @@ func main() {
 
 	if sourceMode.IsRegular() {
 		// we're just doing one file
-		fmt.Println("===== Single file mode")
+		fmt.Println("===== Single file mode =====")
 
 		// Get the filename from the source path.
 		fileName := filepath.Base(sourcePath)
@@ -281,12 +285,18 @@ func main() {
 		fmt.Println(" - From: " + sourcePath)
 		fmt.Println("     To: ", toFile)
 
-		//pt := strings.Split(dir, "/")
-		//fn := strings.Split(pt[len(pt)-1], ".")
-		//path := strings.TrimRight(dir, pt[len(pt)-1])
-		//writeFile := fmt.Sprintf("%s%s.%s.%s", path, fn[0], lang, fn[len(fn)-1])
-		//doXlate(FromLang, ToLang, sourcePath, toFile)
-		TranslateMarkdown(sourcePath)
+		// Switch between possible file type parsers
+		switch filepath.Ext(sourcePath) {
+		case ".md":
+			translatedContent, err := TranslateMarkdown(sourcePath)
+			checkError(err)
+
+			// Write the translated content to the target file.
+			err = ioutil.WriteFile(toFile, translatedContent, 0644)
+			checkError(err)
+
+			fmt.Printf("%s", translatedContent)
+		}
 	}
 
 }

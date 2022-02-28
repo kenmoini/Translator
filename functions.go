@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	ghodssyaml "github.com/ghodss/yaml"
 )
 
-// Read a directory and return a list of files
+// ReadDir reads a directory and return a list of files, with an optional recursive flag
 func ReadDir(dirname string, recursive bool) []string {
 	// Open the directory
 	f, err := os.Open(dirname)
@@ -51,58 +50,78 @@ func TranslateString(input string) string {
 	return input
 }
 
+func ProcessContent(content []byte) []byte {
+	return content
+}
+
 // TranslateMarkdown translates the markdown file to the target language
-func TranslateMarkdown(filename string) {
+func TranslateMarkdown(filename string) ([]byte, error) {
 
-	// Check to see if this is a markdown file
-	if filepath.Ext(filename) == ".md" {
+	var fullContent []byte
+	var translatedFrontMatter []byte
 
-		// Open the file to test
-		file, err := os.Open(filename)
-		checkError(err)
+	// Extract the frontmatter
+	frontMatterMeta, lastLine, frontMatter, frontMatterJSON, err := ExtractFrontmatter(filename)
+	checkError(err)
 
-		defer file.Close()
+	//fmt.Printf("Resulting struct: %#v\n", frontMatter)
+	//fmt.Printf("Resulting struct: %v\n", frontMatter)
+	//fmt.Printf("Targeting: %v\n", FrontMatterTargets)
 
-		// Extract the frontmatter
-		_, lastLine, frontMatter, err := ExtractFrontmatter(filename)
-		checkError(err)
+	// See if any of the targets exist in the extracted frontmatter and translate it
+	for k, v := range frontMatter {
+		if isValueInList(k, FrontMatterTargets) {
+			// fmt.Printf("%v: %v\n", k, v)
+			frontMatter[k] = TranslateString(v.(string))
+		}
+	}
 
-		//fmt.Printf("Resulting struct: %#v\n", frontMatter)
-		//fmt.Printf("Resulting struct: %v\n", frontMatter)
-		//fmt.Printf("Targeting: %v\n", FrontMatterTargets)
+	// Convert FrontMatter back into YAML
+	// TODO: Handle other frontmatter types
+	switch frontMatterMeta.Type {
+	case "yaml":
+		y, err := ghodssyaml.JSONToYAML(frontMatterJSON)
 
-		// See if any of the targets exist in the extracted frontmatter
-		for k, v := range frontMatter {
-			if isValueInList(k, FrontMatterTargets) {
-				fmt.Printf("%v: %v\n", k, v)
-			}
+		if err != nil {
+			fmt.Printf("err: %v\n", err)
+			return []byte{}, err
 		}
 
-		// Extract the content with the last line number
-		content, err := ExtractContent(filename, lastLine)
+		//fmt.Println(string(y))
+		var buf []byte
+		buf = append(buf, frontMatterMeta.StartingLine+"\n"...)
+		buf = append(buf, y...)
+		buf = append(buf, frontMatterMeta.EndingLine+"\n"...)
+		translatedFrontMatter = buf
+	}
+
+	// Extract the content with the last line number
+	content, err := ExtractContent(filename, lastLine)
+	checkError(err)
+
+	//fmt.Printf("%s", content)
+
+	// Glue the frontmatter and content together
+	fullContent = append(fullContent, translatedFrontMatter...)
+	fullContent = append(fullContent, content...)
+
+	// Read the file
+	/*
+		dat, err := os.ReadFile(filename)
 		checkError(err)
 
-		fmt.Printf("%s", content)
+		// If so, get front matter
+		frontMatter, rest, err := GetFrontmatter(dat)
+		checkError(err)
 
-		// Read the file
-		/*
-			dat, err := os.ReadFile(filename)
-			checkError(err)
+		fmt.Printf("%+v\n", frontMatter)
+		fmt.Println(string(rest))
+	*/
 
-			// If so, get front matter
-			frontMatter, rest, err := GetFrontmatter(dat)
-			checkError(err)
-
-			fmt.Printf("%+v\n", frontMatter)
-			fmt.Println(string(rest))
-		*/
-
-		// Translate title
-		// Translate description
-		// Translate the body
-	} else {
-		println("Not a markdown file!")
-	}
+	// Translate title
+	// Translate description
+	// Translate the body
+	return fullContent, nil
 }
 
 // ExtractContent skips past the last line of the FrontMatter and returns the content from the file
@@ -139,7 +158,7 @@ func ExtractContent(filename string, lastLine int) ([]byte, error) {
 }
 
 // ExtractFrontmatter reads the frontmatter from a file and supports YAML, TOML, and JSON, returning the parsed data in JSON format
-func ExtractFrontmatter(filename string) (string, int, map[string]interface{}, error) {
+func ExtractFrontmatter(filename string) (FrontMatterMeta, int, map[string]interface{}, []byte, error) {
 
 	// Open the file to test
 	file, err := os.Open(filename)
@@ -151,38 +170,72 @@ func ExtractFrontmatter(filename string) (string, int, map[string]interface{}, e
 	scanner := bufio.NewScanner(file)
 
 	var line int
-	var frontMatterType string
+	// var frontMatterType string
 	var frontMatterClosing string
 	var frontMatterLastLine int
 	var frontMatterData []byte
 	var frontMatterStruct map[string]interface{}
+	var frontMatterMeta FrontMatterMeta
 
 	// Loop through the file
 	for scanner.Scan() {
 		//fmt.Println(scanner.Text())
 		if line == 0 {
 			switch scanner.Text() {
-			case "---", "---yaml", "---yml":
-				frontMatterType = "yaml"
+			case "---":
+				//frontMatterType = "yaml"
 				frontMatterClosing = "---"
+				frontMatterMeta.Type = "yaml"
+				frontMatterMeta.StartingLine = "---"
+				frontMatterMeta.EndingLine = "---"
+			case "---yaml":
+				// frontMatterType = "yaml"
+				frontMatterClosing = "---"
+				frontMatterMeta.Type = "yaml"
+				frontMatterMeta.StartingLine = "---yaml"
+				frontMatterMeta.EndingLine = "---"
+			case "---yml":
+				// frontMatterType = "yaml"
+				frontMatterClosing = "---"
+				frontMatterMeta.Type = "yaml"
+				frontMatterMeta.StartingLine = "---yml"
+				frontMatterMeta.EndingLine = "---"
 			case "---toml":
-				frontMatterType = "toml"
+				// frontMatterType = "toml"
 				frontMatterClosing = "---"
+				frontMatterMeta.Type = "toml"
+				frontMatterMeta.StartingLine = "---toml"
+				frontMatterMeta.EndingLine = "---"
 			case "+++":
-				frontMatterType = "toml"
+				// frontMatterType = "toml"
 				frontMatterClosing = "+++"
+				frontMatterMeta.Type = "toml"
+				frontMatterMeta.StartingLine = "+++"
+				frontMatterMeta.EndingLine = "+++"
 			case ";;;":
-				frontMatterType = "json"
+				// frontMatterType = "json"
 				frontMatterClosing = ";;;"
+				frontMatterMeta.Type = "json"
+				frontMatterMeta.StartingLine = ";;;"
+				frontMatterMeta.EndingLine = ";;;"
 			case "---json":
-				frontMatterType = "json"
+				// frontMatterType = "json"
 				frontMatterClosing = "---"
+				frontMatterMeta.Type = "json"
+				frontMatterMeta.StartingLine = "---json"
+				frontMatterMeta.EndingLine = "---"
 			case "{":
-				frontMatterType = "json"
+				// frontMatterType = "json"
 				frontMatterClosing = "}"
+				frontMatterMeta.Type = "json"
+				frontMatterMeta.StartingLine = "{"
+				frontMatterMeta.EndingLine = "}"
 			default:
-				frontMatterType = "unknown"
+				// frontMatterType = "unknown"
 				frontMatterClosing = "unknown"
+				frontMatterMeta.Type = "unknown"
+				frontMatterMeta.StartingLine = "unknown"
+				frontMatterMeta.EndingLine = "unknown"
 			}
 		} else {
 			// Look for the closing frontmatter string
@@ -200,7 +253,7 @@ func ExtractFrontmatter(filename string) (string, int, map[string]interface{}, e
 	}
 	if err := scanner.Err(); err != nil {
 		log.Fatalln(err)
-		return frontMatterType, frontMatterLastLine, frontMatterStruct, err
+		return frontMatterMeta, frontMatterLastLine, frontMatterStruct, []byte{}, err
 	}
 
 	// General debug output
@@ -213,16 +266,16 @@ func ExtractFrontmatter(filename string) (string, int, map[string]interface{}, e
 	jsonDoc, err := ghodssyaml.YAMLToJSON(frontMatterData)
 	if err != nil {
 		fmt.Printf("Error converting YAML to JSON: %s\n", err.Error())
-		return frontMatterType, frontMatterLastLine, frontMatterStruct, err
+		return frontMatterMeta, frontMatterLastLine, frontMatterStruct, []byte{}, err
 	}
 
 	err = json.Unmarshal(jsonDoc, &frontMatterStruct)
 	if err != nil {
 		fmt.Printf("Error unmarshaling JSON: %s\n", err.Error())
-		return frontMatterType, frontMatterLastLine, frontMatterStruct, err
+		return frontMatterMeta, frontMatterLastLine, frontMatterStruct, []byte{}, err
 	}
 
 	//fmt.Printf("Resulting struct: %#v\n", frontMatterStruct)
 
-	return frontMatterType, frontMatterLastLine, frontMatterStruct, nil
+	return frontMatterMeta, frontMatterLastLine, frontMatterStruct, jsonDoc, nil
 }
