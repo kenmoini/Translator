@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -10,47 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"cloud.google.com/go/translate"
-	readingtime "github.com/begmaroman/reading-time"
-	"golang.org/x/text/language"
-	"google.golang.org/api/option"
 )
-
-func AuthTranslate(jsonPath, projectID string) (*translate.Client, context.Context, error) {
-	ctx := context.Background()
-	client, err := translate.NewClient(ctx, option.WithCredentialsFile(jsonPath))
-	if err != nil {
-		log.Fatal(err)
-		return client, ctx, err
-	}
-	return client, ctx, nil
-
-}
-
-// this is directly copy/pasted from Google example
-func translateTextWithModel(targetLanguage, text, model string) (string, error) {
-
-	lang, err := language.Parse(targetLanguage)
-	if err != nil {
-		return "", fmt.Errorf("language.Parse: %v", err)
-	}
-	client, ctx, err := AuthTranslate("google-secret.json", "103373479946395174633")
-	if err != nil {
-		return "", fmt.Errorf("translate.NewClient: %v", err)
-	}
-	defer client.Close()
-	resp, err := client.Translate(ctx, []string{text}, lang, &translate.Options{
-		Model: model, // Either "nmt" or "base".
-	})
-	if err != nil {
-		return "", fmt.Errorf("translate: %v", err)
-	}
-	if len(resp) == 0 {
-		return "", nil
-	}
-	return resp[0].Text, nil
-}
 
 // I get tired of typing this all the time
 func checkError(err error) {
@@ -210,34 +169,6 @@ func getFile(from string, path string, lang string) {
 	}
 }
 
-func addReadingTime(file string) {
-	// fmt.Println("Reading: ", file)
-	f, err := os.ReadFile(file)
-	if strings.Index(string(f), "reading_time:") > 0 {
-		return
-	}
-	checkError(err)
-	estimation := readingtime.Estimate(string(f))
-	fm := strings.LastIndex(string(f), "---")
-	newArt := f[:fm]
-	fw, err := os.Create(file)
-	checkError(err)
-	defer fw.Close()
-	fw.WriteString(string(newArt))
-	mins := int(estimation.Duration.Minutes())
-	dur := ""
-	if mins > 1 {
-		dur = fmt.Sprintf("reading_time: %d minutes\n", mins)
-	} else if mins == 1 {
-		dur = fmt.Sprintf("reading_time: %d minute\n", mins)
-	} else {
-		dur = fmt.Sprintf("reading_time: %d minute\n", mins)
-	}
-	fw.WriteString(dur)
-	fw.WriteString(string(f[fm:]))
-	fw.Close()
-}
-
 func main() {
 	var parameters PathParameters
 
@@ -261,14 +192,14 @@ func main() {
 	// Set basic variables
 	sourcePath := strings.TrimSuffix(parameters.path, "/")
 	targetPath := strings.TrimSuffix(parameters.destination, "/")
-	fromLang := parameters.fromLang
-	toLang := parameters.toLang
+	FromLang := parameters.fromLang
+	ToLang := parameters.toLang
 	FrontMatterTargets = strings.Split(parameters.frontMatterTargets, ",")
 
 	// Start output
 	fmt.Println("===== Input Parameters =====")
-	fmt.Println("- From Language:       ", fromLang)
-	fmt.Println("- To Language:         ", toLang)
+	fmt.Println("- From Language:       ", FromLang)
+	fmt.Println("- To Language:         ", ToLang)
 	fmt.Println("- From Path:           ", sourcePath)
 	fmt.Println("- To Path:             ", targetPath)
 	fmt.Println("- FrontMatter Targets: ", FrontMatterTargets)
@@ -314,7 +245,7 @@ func main() {
 			fmt.Println(" - From: ", strings.TrimSuffix(f, "/"))
 			fmt.Println("     To: ", toFile)
 
-			//doXlate(fromLang, toLang, sourcePath, toFile)
+			//doXlate(FromLang, ToLang, sourcePath, toFile)
 		}
 	}
 
@@ -354,7 +285,7 @@ func main() {
 		//fn := strings.Split(pt[len(pt)-1], ".")
 		//path := strings.TrimRight(dir, pt[len(pt)-1])
 		//writeFile := fmt.Sprintf("%s%s.%s.%s", path, fn[0], lang, fn[len(fn)-1])
-		//doXlate(fromLang, toLang, sourcePath, toFile)
+		//doXlate(FromLang, ToLang, sourcePath, toFile)
 		TranslateMarkdown(sourcePath)
 	}
 

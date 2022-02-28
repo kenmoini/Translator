@@ -47,6 +47,7 @@ func ReadDir(dirname string, recursive bool) []string {
 	return matchedFiles
 }
 
+// TranslateMarkdown translates the markdown file to the target language
 func TranslateMarkdown(filename string) {
 
 	// Check to see if this is a markdown file
@@ -59,7 +60,7 @@ func TranslateMarkdown(filename string) {
 		defer file.Close()
 
 		// Extract the frontmatter
-		_, _, frontMatter, err := ExtractFrontmatter(file)
+		_, lastLine, frontMatter, err := ExtractFrontmatter(filename)
 		checkError(err)
 
 		//fmt.Printf("Resulting struct: %#v\n", frontMatter)
@@ -72,6 +73,12 @@ func TranslateMarkdown(filename string) {
 				fmt.Printf("%v: %v\n", k, v)
 			}
 		}
+
+		// Extract the content with the last line number
+		content, err := ExtractContent(filename, lastLine)
+		checkError(err)
+
+		fmt.Printf("%s", content)
 
 		// Read the file
 		/*
@@ -94,8 +101,47 @@ func TranslateMarkdown(filename string) {
 	}
 }
 
+// ExtractContent skips past the last line of the FrontMatter and returns the content from the file
+func ExtractContent(filename string, lastLine int) ([]byte, error) {
+
+	// Open the file to test
+	file, err := os.Open(filename)
+	checkError(err)
+
+	defer file.Close()
+
+	// Create a new buffer to read the file
+	scanner := bufio.NewScanner(file)
+
+	var line int
+	var contentData []byte
+
+	// Loop through the file
+	for scanner.Scan() {
+		//fmt.Printf("%v\n", scanner.Text())
+		if line > lastLine {
+			// Add the content to the byte slice
+			contentData = append(contentData, scanner.Text()+"\n"...)
+		}
+		// Increment the line counter
+		line++
+	}
+	if err := scanner.Err(); err != nil {
+		log.Fatalln(err)
+		return []byte{}, err
+	}
+
+	return contentData, nil
+}
+
 // ExtractFrontmatter reads the frontmatter from a file and supports YAML, TOML, and JSON, returning the parsed data in JSON format
-func ExtractFrontmatter(file *os.File) (string, int, map[string]interface{}, error) {
+func ExtractFrontmatter(filename string) (string, int, map[string]interface{}, error) {
+
+	// Open the file to test
+	file, err := os.Open(filename)
+	checkError(err)
+
+	defer file.Close()
 
 	// Create a new buffer to read the file
 	scanner := bufio.NewScanner(file)
