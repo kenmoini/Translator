@@ -35,21 +35,22 @@ vet: ## Run go vet against code.
 ##@ Build
 
 build: ## Build the translation binary to the ./bin/ directory
-	echo "Compiling for every OS and Platform"
-	echo "FreeBSD"
+	################################################################
+	## Compiling for every OS and Platform
+	##===== FreeBSD
 	GOOS=freebsd GOARCH=386 go build -o bin/translate-freebsd-386
 	GOOS=freebsd GOARCH=arm go build -o bin/translate-freebsd-arm
 	GOOS=freebsd GOARCH=amd64 go build -o bin/translate-freebsd-amd64
 	GOOS=freebsd GOARCH=arm64 go build -o bin/translate-freebsd-arm64
-	echo "MacOS X"
+	##===== MacOS X
 	GOOS=darwin GOARCH=amd64 go build -o bin/translate-darwin-amd64
 	GOOS=darwin GOARCH=arm64 go build -o bin/translate-darwin-arm64
-	echo "Linux"
+	##===== Linux
 	GOOS=linux GOARCH=386 go build -o bin/translate-linux-386
 	GOOS=linux GOARCH=amd64 go build -o bin/translate-linux-amd64
 	GOOS=linux GOARCH=arm go build -o bin/translate-linux-arm
 	GOOS=linux GOARCH=arm64 go build -o bin/translate-linux-arm64
-	echo "Windows"
+	##===== Windows
 	GOOS=windows GOARCH=386 go build -o bin/translate-windows-386
 	GOOS=windows GOARCH=amd64 go build -o bin/translate-windows-amd64
 	GOOS=windows GOARCH=arm go build -o bin/translate-windows-arm
