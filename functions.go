@@ -47,6 +47,10 @@ func ReadDir(dirname string, recursive bool) []string {
 	return matchedFiles
 }
 
+func TranslateString(input string) string {
+	return input
+}
+
 // TranslateMarkdown translates the markdown file to the target language
 func TranslateMarkdown(filename string) {
 
